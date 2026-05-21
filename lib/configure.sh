@@ -10,20 +10,27 @@ generate_config() {
     echo ""
 
     # ── Network interface ────────────────────────────────────────────────────
-    local default_iface
-    default_iface=$(ip -j route show default 2>/dev/null | jq -r '.[0].dev // empty' 2>/dev/null || true)
-    [[ -z "$default_iface" ]] && default_iface=$(ip -o link show up | awk -F': ' '!/lo/{print $2; exit}')
+    # Default to lo — this VM is primarily used for offline PCAP analysis.
+    # Team members doing live capture can override with their physical interface.
+    local default_iface="lo"
+    local physical_iface
+    physical_iface=$(ip -j route show default 2>/dev/null | jq -r '.[0].dev // empty' 2>/dev/null || true)
 
+    echo "  Detected physical interface: ${physical_iface:-none}"
+    echo "  Default is 'lo' (offline/PCAP analysis mode)."
+    echo "  Use your physical interface (${physical_iface}) for live network capture."
     read -rp "Network interface to monitor [${default_iface}]: " IFACE
     IFACE="${IFACE:-$default_iface}"
 
     # ── HOME_NET ─────────────────────────────────────────────────────────────
-    local detected_nets
-    detected_nets=$(ip -4 -o addr show scope global | awk '{print $4}' | paste -sd, -)
-    [[ -z "$detected_nets" ]] && detected_nets="192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+    # Default to "any" — this VM analyses PCAPs from arbitrary networks,
+    # so restricting HOME_NET would cause rules to silently miss traffic.
+    local default_home_net="any"
 
-    read -rp "HOME_NET subnets [${detected_nets}]: " HOME_NET
-    HOME_NET="${HOME_NET:-$detected_nets}"
+    echo "  Default HOME_NET is 'any' (matches all traffic in PCAPs)."
+    echo "  For live monitoring, set to your actual subnet (e.g. 192.168.1.0/24)."
+    read -rp "HOME_NET [${default_home_net}]: " HOME_NET
+    HOME_NET="${HOME_NET:-$default_home_net}"
 
     # ── Evidence directory ───────────────────────────────────────────────────
     local default_evidence="/opt/st0ne_buntu/evidence"
@@ -51,7 +58,8 @@ generate_config() {
 
 # ── Network ──────────────────────────────────────────────────────────────────
 IFACE="${IFACE}"
-HOME_NET="[${HOME_NET}]"
+HOME_NET="${HOME_NET}"
+EXTERNAL_NET="any"
 
 # ── Directories ──────────────────────────────────────────────────────────────
 EVIDENCE_DIR="${EVIDENCE_DIR}"

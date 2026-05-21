@@ -37,7 +37,7 @@ run_preflight() {
     if [[ $ram_mb -lt 8192 ]]; then
         warn "Less than 8 GB RAM detected. The full stack may struggle."
         warn "Consider running fewer modules or allocating more RAM."
-        ((failed++))
+        failed=$((failed + 1))
     elif [[ $ram_mb -lt 16384 ]]; then
         warn "8-16 GB RAM. Workable, but ES heap and Arkime will be constrained."
     else
@@ -50,7 +50,7 @@ run_preflight() {
     info "Free disk: ${disk_gb} GB"
     if [[ $disk_gb -lt 40 ]]; then
         warn "Less than 40 GB free. PCAP storage and ES indices will fill fast."
-        ((failed++))
+        failed=$((failed + 1))
     fi
 
     # ── Internet connectivity ────────────────────────────────────────────────
@@ -58,7 +58,7 @@ run_preflight() {
         info "Internet: reachable (packages.elastic.co)"
     else
         warn "Cannot reach packages.elastic.co. Install will fail without internet."
-        ((failed++))
+        failed=$((failed + 1))
     fi
 
     # ── Network interface ────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ run_preflight() {
         info "Default interface: ${iface}"
     else
         warn "Could not detect default network interface."
-        ((failed++))
+        failed=$((failed + 1))
     fi
 
     # ── Summary ──────────────────────────────────────────────────────────────
