@@ -12,3 +12,8 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# Sample PCAPs (too large for git)
+samples/*.pcap
+samples/*.pcapng
+samples/*.cap

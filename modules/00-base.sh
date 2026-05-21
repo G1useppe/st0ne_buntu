@@ -154,20 +154,34 @@ if [[ -f "$WALLPAPER_SRC" ]]; then
     cp "$WALLPAPER_SRC" "$WALLPAPER_DEST"
     info "Wallpaper copied to ${WALLPAPER_DEST}"
 
-    # Apply for every human user (UID >= 1000) with a home directory
-    while IFS=: read -r username _ uid _ _ homedir _; do
-        [[ $uid -ge 1000 && -d "$homedir" ]] || continue
+    # Set wallpaper system-wide via dconf override — works without a running
+    # desktop session, and applies to all users including future ones.
+    DCONF_PROFILE="/etc/dconf/profile/user"
+    DCONF_DB_DIR="/etc/dconf/db/local.d"
+    DCONF_WALLPAPER="${DCONF_DB_DIR}/01-st0ne_buntu-wallpaper"
 
-        # GNOME (Ubuntu 22.04 default desktop)
-        if cmd_exists gsettings; then
-            su - "$username" -c "
-                gsettings set org.gnome.desktop.background picture-uri 'file://${WALLPAPER_DEST}' 2>/dev/null
-                gsettings set org.gnome.desktop.background picture-uri-dark 'file://${WALLPAPER_DEST}' 2>/dev/null
-                gsettings set org.gnome.desktop.background picture-options 'zoom' 2>/dev/null
-            " 2>/dev/null || true
-            info "  Wallpaper set for user: ${username}"
-        fi
-    done < /etc/passwd
+    mkdir -p "$DCONF_DB_DIR"
+
+    # Create dconf profile if it doesn't exist
+    if [[ ! -f "$DCONF_PROFILE" ]]; then
+        cat > "$DCONF_PROFILE" <<'DCONF_PROF'
+user-db:user
+system-db:local
+DCONF_PROF
+    fi
+
+    # Write wallpaper override
+    cat > "$DCONF_WALLPAPER" <<DCONF_WP
+[org/gnome/desktop/background]
+picture-uri='file://${WALLPAPER_DEST}'
+picture-uri-dark='file://${WALLPAPER_DEST}'
+picture-options='zoom'
+DCONF_WP
+
+    # Compile the dconf database
+    dconf update 2>/dev/null || true
+    info "Wallpaper set system-wide via dconf."
+    info "Takes effect on next login (or log out and back in)."
 else
     warn "No wallpaper found at ${WALLPAPER_SRC} — skipping."
     warn "Place your wallpaper at assets/wallpaper.png in the repo."

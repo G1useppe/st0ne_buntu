@@ -1,14 +1,14 @@
 # st0ne_buntu
 
-A modular toolkit for building a standardised Ubuntu 22.04 LTS forensics and network security monitoring workstation. Clone the repo on a fresh install, run the installer, and get a fully configured stack.
+A modular toolkit for building a standardised Ubuntu 22.04 LTS forensics and network security monitoring workstation. Clone the repo on a fresh install, run the installer, and get a fully configured stack ready for PCAP analysis, threat hunting, and incident response.
 
 ## What you get
 
 | Tool | Purpose | Module |
 |---|---|---|
-| **Elasticsearch** | Shared indexing backend for all log/session data | `10-elasticsearch` |
+| **Elasticsearch 8.x** | Shared indexing backend for all log/session data | `10-elasticsearch` |
 | **Kibana** | Dashboards, Elastic Security SIEM, alert triage | `15-kibana` |
-| **Suricata** | Signature-based IDS with ET Open rules (daily updates) | `20-suricata` |
+| **Suricata** | Signature-based IDS with full ET Open ruleset (daily updates) | `20-suricata` |
 | **Zeek** | Protocol analysis, connection logging, behavioural detection | `25-zeek` |
 | **Filebeat** | Ships Suricata + Zeek logs into Elasticsearch | `30-filebeat` |
 | **Arkime** | Full packet capture with indexed session search | `35-arkime` |
@@ -19,12 +19,12 @@ A modular toolkit for building a standardised Ubuntu 22.04 LTS forensics and net
 ## Quick start
 
 ```bash
-git clone https://github.com/yourorg/st0ne_buntu.git
+git clone git@github.com:G1useppe/st0ne_buntu.git
 cd st0ne_buntu
 sudo ./install.sh
 ```
 
-On first run you'll be prompted for your network interface, HOME_NET, and storage preferences. These are saved to `st0ne_buntu.conf` (gitignored — each team member gets their own).
+On first run you'll be prompted for network interface (defaults to `lo` for offline PCAP analysis), HOME_NET (defaults to `any`), and storage preferences. These are saved to `st0ne_buntu.conf` (gitignored — each team member gets their own).
 
 ## Requirements
 
@@ -39,9 +39,13 @@ On first run you'll be prompted for your network interface, HOME_NET, and storag
 ```
 st0ne_buntu/
 ├── install.sh              # Orchestrator — runs modules in order
+├── process-pcaps.sh        # Batch Suricata + Zeek against PCAPs
 ├── st0ne_buntu.conf        # Local config (generated, gitignored)
 ├── versions.conf           # Pinned tool versions
 ├── .gitignore
+│
+├── assets/
+│   └── wallpaper.png       # st0ne_buntu desktop wallpaper
 │
 ├── lib/
 │   ├── common.sh           # Shared functions, colours, helpers
@@ -49,38 +53,33 @@ st0ne_buntu/
 │   └── configure.sh        # First-run config generator
 │
 ├── modules/
-│   ├── 00-base.sh          # System deps, sysctl tuning, directories
+│   ├── 00-base.sh          # System deps, sysctl, wallpaper, geany
 │   ├── 10-elasticsearch.sh # Single-node ES, heap tuning, ILM
 │   ├── 15-kibana.sh        # Kibana + Elastic Security
-│   ├── 20-suricata.sh      # Suricata IDS + ET Open + daily cron
-│   ├── 25-zeek.sh          # Zeek protocol analysis
-│   ├── 30-filebeat.sh      # Log shipping → ES
+│   ├── 20-suricata.sh      # Suricata IDS + emerging-all.rules
+│   ├── 25-zeek.sh          # Zeek protocol analysis (JSON + community-id)
+│   ├── 30-filebeat.sh      # Log shipping → ES + Kibana dashboards
 │   ├── 35-arkime.sh        # Full PCAP + session indexing
 │   ├── 40-hayabusa.sh      # Windows EVTX analyser
 │   ├── 45-yara.sh          # YARA + community rulesets
 │   └── 50-kape.sh          # KAPE parser ecosystem
 │
 ├── config/
-│   ├── suricata/           # suricata.yaml overrides, threshold, disable.conf
+│   ├── suricata/           # suricata.yaml overrides, threshold.config
 │   ├── zeek/               # local.zeek, node.cfg
-│   ├── elasticsearch/      # jvm.options overrides, ILM policy JSON
-│   ├── kibana/             # kibana.yml overrides, saved objects
+│   ├── elasticsearch/      # jvm.options overrides
+│   ├── kibana/             # kibana.yml overrides
 │   ├── filebeat/           # module configs
 │   └── arkime/             # config.ini template
 │
 ├── rules/
-│   ├── update-et.sh        # Suricata rule update wrapper
+│   ├── update-et.sh        # Suricata emerging-all.rules updater
 │   └── update-yara.sh      # YARA community rule puller
+│
+├── samples/                # Test PCAPs (gitignored, too large for repo)
 │
 ├── tests/
 │   └── smoke-test.sh       # Post-install health check
-│
-├── evidence/               # Standard evidence directory layout
-│   ├── pcap/               # Arkime PCAP storage
-│   ├── evtx/               # Windows event logs for Hayabusa
-│   ├── yara-hits/          # YARA scan output
-│   ├── kape-output/        # KAPE triage output
-│   └── samples/            # Malware/file samples
 │
 └── docs/
     └── (architecture docs, runbooks, team notes)
@@ -88,17 +87,42 @@ st0ne_buntu/
 
 ## Running individual modules
 
-Each module is independently runnable:
-
 ```bash
-# Run just the Suricata module
+# Run a single module
 sudo ./install.sh --module 20
 
-# Or directly
-sudo bash modules/20-suricata.sh st0ne_buntu.conf .
+# List available modules
+sudo ./install.sh --list
+
+# Preflight checks only (no changes)
+sudo ./install.sh --check
 ```
 
 Modules are idempotent — safe to re-run.
+
+## Processing PCAPs
+
+Drop `.pcap` files into `evidence/pcap/` and run:
+
+```bash
+sudo ./process-pcaps.sh
+```
+
+This runs both Suricata and Zeek against each PCAP and writes structured output to `evidence/processed/<name>/suricata/` and `evidence/processed/<name>/zeek/`.
+
+```bash
+# Process a single file
+sudo ./process-pcaps.sh demo.pcap
+
+# Re-process after rule updates
+sudo ./process-pcaps.sh --reprocess
+```
+
+To import PCAPs into Arkime for session-level analysis:
+
+```bash
+sudo /opt/arkime/bin/capture --copy -r samples/demo.pcap -c /opt/arkime/etc/config.ini
+```
 
 ## Version pinning
 
@@ -107,7 +131,7 @@ Tool versions are pinned in `versions.conf`. Update versions there and re-run th
 ## Data flow
 
 ```
-Network traffic
+Network traffic / PCAP replay
     ├─→ Suricata (alerts + protocol logs → eve.json)
     │       └─→ Filebeat ──→ Elasticsearch ←── Kibana
     ├─→ Zeek (conn/protocol logs → JSON)
@@ -116,18 +140,36 @@ Network traffic
             └─→ Arkime Viewer (web UI)
 
 Offline analysis:
-    ├─ Hayabusa ← EVTX files dropped in evidence/evtx/
-    ├─ YARA     ← samples dropped in evidence/samples/
-    └─ KAPE     ← output dropped in evidence/kape-output/
+    ├─ process-pcaps.sh  ← PCAPs in evidence/pcap/
+    ├─ Hayabusa          ← EVTX files in evidence/evtx/
+    ├─ YARA              ← samples in evidence/samples/
+    └─ KAPE parsers      ← output in evidence/kape-output/
 ```
+
+## Design decisions
+
+- **HOME_NET / EXTERNAL_NET set to `any`** — this is a PCAP analysis workstation, not a perimeter sensor. Restricting HOME_NET causes rules to miss traffic from unknown source networks. A few ET rules using `!$HOME_NET` will fail to parse (expected, harmless).
+- **Interface defaults to `lo`** — most work is offline PCAP analysis via `suricata -r`, `zeek -r`, and Arkime import. Team members doing live capture can set their physical interface during config.
+- **`emerging-all.rules` instead of `suricata-update`** — the full ET Open ruleset with all categories enabled, downloaded directly. No rules silently disabled. Daily cron keeps it current.
+- **ES security disabled** — lab environment. Don't run this config in production.
 
 ## After install
 
-- **Kibana:** http://localhost:5601
-- **Arkime Viewer:** http://localhost:8005
-- **Suricata alerts:** `tail -f /var/log/suricata/fast.log`
-- **Zeek logs:** `/opt/zeek/logs/current/`
-- **Smoke test:** `sudo ./tests/smoke-test.sh`
+| Service | URL |
+|---|---|
+| Kibana | http://localhost:5601 |
+| Arkime Viewer | http://localhost:8005 (admin / st0ne_buntu) |
+
+```bash
+# Suricata alerts
+tail -f /var/log/suricata/fast.log
+
+# Zeek logs
+ls /opt/zeek/logs/current/
+
+# Health check
+sudo ./tests/smoke-test.sh
+```
 
 ## Contributing
 

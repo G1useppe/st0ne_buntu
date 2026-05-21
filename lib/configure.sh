@@ -49,6 +49,13 @@ generate_config() {
     read -rp "Disable ES security/TLS for lab use? [Y/n]: " ES_DISABLE_SECURITY
     ES_DISABLE_SECURITY="${ES_DISABLE_SECURITY:-Y}"
 
+    # ── Optional components ─────────────────────────────────────────────────
+    echo ""
+    echo "  Arkime is a large download (~150 MB). Skip if bandwidth is limited"
+    echo "  or you don't need full packet capture/session indexing."
+    read -rp "Install Arkime? [Y/n]: " INSTALL_ARKIME
+    INSTALL_ARKIME="${INSTALL_ARKIME:-Y}"
+
     # ── Write config ─────────────────────────────────────────────────────────
     cat > "$conf_file" <<EOF
 # =============================================================================
@@ -81,6 +88,9 @@ ES_DISABLE_SECURITY="${ES_DISABLE_SECURITY}"
 # ── Service ports ────────────────────────────────────────────────────────────
 KIBANA_PORT="5601"
 ARKIME_PORT="8005"
+
+# ── Optional components ──────────────────────────────────────────────────
+INSTALL_ARKIME="${INSTALL_ARKIME}"
 EOF
 
     info "Configuration written to: ${conf_file}"
