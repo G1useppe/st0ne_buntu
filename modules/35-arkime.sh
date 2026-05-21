@@ -56,9 +56,10 @@ fi
 
 info "Arkime installed at ${ARKIME_PREFIX}"
 
-# ── 2. Create PCAP storage directory ────────────────────────────────────────
+# ── 2. Create PCAP storage and logs directories ─────────────────────────────
 mkdir -p "${PCAP_DIR}"
 chown -R nobody:daemon "${PCAP_DIR}" 2>/dev/null || true
+mkdir -p "${ARKIME_PREFIX}/logs"
 info "PCAP storage: ${PCAP_DIR}"
 
 # ── 3. Write config.ini ─────────────────────────────────────────────────────
@@ -90,16 +91,8 @@ viewPort=${ARKIME_PORT}
 # Disable user/password for viewer (lab mode) — set to true for production
 passwordSecret=st0ne_buntu_lab
 
-# GeoIP — disable MaxMind download (requires account)
-geoLite2Country=/dev/null
-geoLite2ASN=/dev/null
-
 # Plugins
-plugins=wise.so;suricata.so
-
-# WISE
-wiseHost=127.0.0.1
-wisePort=8081
+plugins=suricata.so
 
 # Suricata log integration — correlate Arkime sessions with Suricata alerts
 suricataAlertFile=/var/log/suricata/eve.json
@@ -115,13 +108,7 @@ compressES=true
 # Drop privilege
 dropUser=nobody
 dropGroup=daemon
-
-# Arkime rules directory
-rulesFiles=${ARKIME_PREFIX}/etc/rules.conf
 EOF
-
-# Create an empty rules file if it doesn't exist
-touch "${ARKIME_PREFIX}/etc/rules.conf" 2>/dev/null || true
 
 info "config.ini written."
 
