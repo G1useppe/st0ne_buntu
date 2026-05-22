@@ -150,11 +150,8 @@ else
 fi
 
 # ── 7. Enable and start services ────────────────────────────────────────────
-info "Enabling Arkime services …"
-systemctl enable arkimecapture 2>/dev/null || true
-systemctl enable arkimeviewer 2>/dev/null || true
-
 info "Starting Arkime viewer …"
+systemctl enable arkimeviewer 2>/dev/null || true
 systemctl restart arkimeviewer
 sleep 3
 
@@ -165,17 +162,18 @@ else
     warn "Check: journalctl -u arkimeviewer --no-pager -n 30"
 fi
 
-# Start capture — may fail on lo, that's OK for offline analysis
-info "Starting Arkime capture …"
-systemctl restart arkimecapture 2>/dev/null || true
-sleep 2
-
-if service_is_active arkimecapture; then
-    info "Arkime capture is running on ${IFACE}."
+if [[ "$IFACE" == "lo" ]]; then
+    info "Interface is lo (offline analysis mode)."
+    info "Arkime live capture NOT enabled — use process-pcaps.sh or:"
+    info "  ${ARKIME_PREFIX}/bin/capture --copy -r <pcap> -c ${ARKIME_CONF}"
 else
-    if [[ "$IFACE" == "lo" ]]; then
-        info "Arkime capture not running (expected on lo interface)."
-        info "For PCAP import use: ${ARKIME_PREFIX}/bin/capture --copy -r <pcap>"
+    info "Starting Arkime capture on ${IFACE} …"
+    systemctl enable arkimecapture 2>/dev/null || true
+    systemctl restart arkimecapture 2>/dev/null || true
+    sleep 2
+
+    if service_is_active arkimecapture; then
+        info "Arkime capture is running on ${IFACE}."
     else
         warn "Arkime capture may not have started."
         warn "Check: journalctl -u arkimecapture --no-pager -n 30"

@@ -130,18 +130,24 @@ else
 fi
 
 # ── 6. Enable and start Suricata ────────────────────────────────────────────
-info "Enabling Suricata service …"
-systemctl enable suricata
-
-info "(Re)starting Suricata …"
-systemctl restart suricata
-sleep 3
-
-if service_is_active suricata; then
-    info "Suricata is running."
+if [[ "$IFACE" == "lo" ]]; then
+    info "Interface is lo (offline analysis mode)."
+    info "Suricata live capture NOT enabled — use 'suricata -r <pcap>' or process-pcaps.sh"
+    systemctl disable suricata 2>/dev/null || true
+    systemctl stop suricata 2>/dev/null || true
 else
-    warn "Suricata may not have started cleanly."
-    warn "Check: journalctl -u suricata --no-pager -n 50"
+    info "Enabling Suricata service on ${IFACE} …"
+    systemctl enable suricata
+    info "(Re)starting Suricata …"
+    systemctl restart suricata
+    sleep 3
+
+    if service_is_active suricata; then
+        info "Suricata is running."
+    else
+        warn "Suricata may not have started cleanly."
+        warn "Check: journalctl -u suricata --no-pager -n 50"
+    fi
 fi
 
 # ── 7. Daily rule update cron ───────────────────────────────────────────────
