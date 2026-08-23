@@ -19,7 +19,7 @@ A modular toolkit for building a standardised Ubuntu 22.04 LTS forensics and net
 ## Quick start
 
 ```bash
-git clone git@github.com:G1useppe/st0ne_buntu.git
+git clone https://github.com/G1useppe/st0ne_buntu.git
 cd st0ne_buntu
 sudo ./install.sh
 ```
