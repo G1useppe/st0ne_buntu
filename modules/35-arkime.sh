@@ -42,24 +42,13 @@ ARKIME_PREFIX="/opt/arkime"
 ARKIME_DEB="arkime_${ARKIME_VERSION}-1.ubuntu2204_amd64.deb"
 ARKIME_URL="https://github.com/arkime/arkime/releases/download/v${ARKIME_VERSION}/${ARKIME_DEB}"
 
-# ── 1. Download and install Arkime ───────────────────────────────────────────
-if [[ -x "${ARKIME_PREFIX}/bin/capture" ]]; then
-    info "Arkime already installed."
-else
-    DEB_PATH="/tmp/${ARKIME_DEB}"
-    download_if_missing "$ARKIME_URL" "$DEB_PATH"
 
-    info "Installing Arkime ${ARKIME_VERSION} …"
-    apt-get install -y -qq "$DEB_PATH"
-    rm -f "$DEB_PATH"
-fi
-
-info "Arkime installed at ${ARKIME_PREFIX}"
 
 # ── 2. Create PCAP storage and logs directories ─────────────────────────────
 mkdir -p "${PCAP_DIR}"
 chown -R nobody:daemon "${PCAP_DIR}" 2>/dev/null || true
 mkdir -p "${ARKIME_PREFIX}/logs"
+mkdir -p "${ARKIME_PREFIX}/etc" 
 info "PCAP storage: ${PCAP_DIR}"
 
 # ── 3. Write config.ini ─────────────────────────────────────────────────────
@@ -111,6 +100,20 @@ dropGroup=daemon
 EOF
 
 info "config.ini written."
+
+# ── 1. Download and install Arkime ───────────────────────────────────────────
+if [[ -x "${ARKIME_PREFIX}/bin/capture" ]]; then
+    info "Arkime already installed."
+else
+    DEB_PATH="/tmp/${ARKIME_DEB}"
+    download_if_missing "$ARKIME_URL" "$DEB_PATH"
+
+    info "Installing Arkime ${ARKIME_VERSION} …"
+    apt-get install -y -qq "$DEB_PATH"
+    rm -f "$DEB_PATH"
+fi
+
+info "Arkime installed at ${ARKIME_PREFIX}"
 
 # ── 4. Check if ES is reachable ──────────────────────────────────────────────
 info "Checking Elasticsearch connectivity …"
@@ -186,8 +189,9 @@ MAX_WAIT=30
 WAITED=0
 
 while [[ $WAITED -lt $MAX_WAIT ]]; do
-    HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "http://localhost:${ARKIME_PORT}" 2>/dev/null || echo "000")
-    # Arkime returns 401 when auth is required, which means it's running
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${ARKIME_PORT}" 2>/dev/null)
+    [[ -z "$HTTP_CODE" ]] && HTTP_CODE="000"
+# Arkime returns 401 when auth is required, which means it's running
     if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "401" ]]; then
         break
     fi
