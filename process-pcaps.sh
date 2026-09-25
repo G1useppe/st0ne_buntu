@@ -1,40 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
 # process-pcaps.sh — Run Suricata + Zeek against PCAPs, ingest into ELK + Arkime
-#
-# Usage:
-#   ./process-pcaps.sh                    # process all PCAPs
-#   ./process-pcaps.sh specific.pcap      # process one file
-#   ./process-pcaps.sh --reprocess        # clear previous results and re-run
-#   ./process-pcaps.sh --no-ingest        # local files only, skip ES/Arkime
-#
-# Output structure:
-#   evidence/
-#   ├── pcap/
-#   │   └── demo.pcap
-#   └── processed/
-#       └── demo/
-#           ├── suricata/
-#           │   ├── eve.json
-#           │   ├── fast.log
-#           │   └── stats.log
-#           └── zeek/
-#               ├── conn.log
-#               ├── dns.log
-#               ├── http.log
-#               └── ...
-#
-# Ingest:
-#   - Suricata eve.json is also written to /var/log/suricata/eve.json
-#     so Filebeat picks it up and ships to Elasticsearch automatically
-#   - Arkime imports the PCAP for session-level analysis in the viewer
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source common functions if available
 if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     source "${SCRIPT_DIR}/lib/common.sh"
 else
@@ -43,7 +15,6 @@ else
     error() { echo -e "\033[0;31m[✗]\033[0m $*"; exit 1; }
 fi
 
-# Source config if available
 CONF_FILE="${SCRIPT_DIR}/st0ne_buntu.conf"
 if [[ -f "$CONF_FILE" ]]; then
     source "$CONF_FILE"
@@ -68,10 +39,6 @@ while [[ $# -gt 0 ]]; do
         --no-ingest|-n) NO_INGEST=true; shift ;;
         --help|-h)
             echo "Usage: $0 [--reprocess] [--no-ingest] [specific.pcap]"
-            echo ""
-            echo "  --reprocess    Clear previous results and re-run all"
-            echo "  --no-ingest    Skip Elasticsearch/Arkime ingest (local files only)"
-            echo "  specific.pcap  Process only this file from ${PCAP_DIR}/"
             exit 0
             ;;
         *) TARGET_FILE="$1"; shift ;;
@@ -95,7 +62,6 @@ fi
 
 [[ -f "$SURICATA_CONF" ]] || error "Suricata config not found: ${SURICATA_CONF}"
 
-# Check ingest capabilities
 ARKIME_AVAILABLE=false
 ES_AVAILABLE=false
 
@@ -134,12 +100,10 @@ fi
 
 if [[ ${#PCAP_FILES[@]} -eq 0 ]]; then
     warn "No PCAP files found in ${PCAP_DIR}/"
-    warn "Drop .pcap, .pcapng, or .cap files there and re-run."
     exit 0
 fi
 
 info "Found ${#PCAP_FILES[@]} PCAP file(s) to process."
-[[ "$NO_INGEST" == true ]] && info "Ingest disabled (--no-ingest). Local files only."
 
 # ── Process each PCAP ────────────────────────────────────────────────────────
 TOTAL=${#PCAP_FILES[@]}
@@ -147,6 +111,9 @@ CURRENT=0
 FAILED=0
 
 for pcap in "${PCAP_FILES[@]}"; do
+    # Resolve relative paths before cd
+    pcap=$(realpath "$pcap")
+    
     CURRENT=$((CURRENT + 1))
     BASENAME=$(basename "$pcap")
     NAME="${BASENAME%.*}"
@@ -158,13 +125,11 @@ for pcap in "${PCAP_FILES[@]}"; do
     info "[${CURRENT}/${TOTAL}] Processing: ${BASENAME}"
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # Skip if already processed (unless --reprocess)
     if [[ -d "$OUTPUT_DIR" && "$REPROCESS" == false ]]; then
         info "Already processed. Use --reprocess to re-run. Skipping."
         continue
     fi
 
-    # Clean and create output dirs
     rm -rf "$OUTPUT_DIR"
     mkdir -p "$SURI_DIR" "$ZEEK_DIR"
 
@@ -178,12 +143,10 @@ for pcap in "${PCAP_FILES[@]}"; do
         FAILED=$((FAILED + 1))
     fi
 
-    # ── Suricata → Elasticsearch (via live eve.json → Filebeat) ──────────
     if [[ "$ES_AVAILABLE" == true && "$NO_INGEST" == false ]]; then
         if [[ -f "${SURI_DIR}/eve.json" ]]; then
             info "Appending Suricata EVE to live log for Filebeat ingest …"
             cat "${SURI_DIR}/eve.json" >> "$SURICATA_LIVE_EVE"
-            info "EVE data appended → Filebeat will ship to Elasticsearch."
         fi
     fi
 
@@ -199,6 +162,12 @@ for pcap in "${PCAP_FILES[@]}"; do
             FAILED=$((FAILED + 1))
         fi
         cd - > /dev/null
+        
+        # Ingest Zeek output to Filebeat path
+        if [[ "$ES_AVAILABLE" == true && "$NO_INGEST" == false ]]; then
+            info "Copying Zeek logs to /opt/zeek/logs/current for Filebeat ingest …"
+            cp "${ZEEK_DIR}"/*.log "/opt/zeek/logs/current/" 2>/dev/null || true
+        fi
     fi
 
     # ── Arkime import ────────────────────────────────────────────────────
@@ -211,42 +180,14 @@ for pcap in "${PCAP_FILES[@]}"; do
         fi
     fi
 
-    # ── Summary for this PCAP ────────────────────────────────────────────
     info "Output: ${OUTPUT_DIR}/"
-    du -sh "$SURI_DIR" "$ZEEK_DIR" 2>/dev/null | while read -r line; do
-        info "  ${line}"
-    done
 done
 
-# ── Wait for Filebeat to pick up data ────────────────────────────────────────
 if [[ "$ES_AVAILABLE" == true && "$NO_INGEST" == false ]]; then
     info "Waiting for Filebeat to ship data to Elasticsearch …"
     sleep 10
-    DOC_COUNT=$(curl -sf "http://${ES_HOST:-localhost}:${ES_PORT:-9200}/filebeat-*/_count" 2>/dev/null | \
-        python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo "unknown")
-    info "Filebeat index document count: ${DOC_COUNT}"
 fi
 
-# ── Final summary ────────────────────────────────────────────────────────────
-echo ""
 info "════════════════════════════════════════════════════════════"
 info "  Processing complete: ${TOTAL} PCAP(s)"
-info "  Results:  ${PROCESSED_DIR}/"
-[[ $FAILED -gt 0 ]] && warn "  Failures: ${FAILED}"
-info ""
-info "  Local analysis:"
-info "    cat ${PROCESSED_DIR}/*/suricata/fast.log    # all alerts"
-info "    jq . ${PROCESSED_DIR}/*/zeek/conn.log       # all connections"
-info "    jq . ${PROCESSED_DIR}/*/zeek/dns.log        # all DNS"
-info "    jq . ${PROCESSED_DIR}/*/zeek/http.log       # all HTTP"
-if [[ "$NO_INGEST" == false ]]; then
-    info ""
-    info "  Elasticsearch / Kibana:"
-    info "    http://localhost:${KIBANA_PORT:-5601}/app/dashboards"
-    if [[ "$ARKIME_AVAILABLE" == true ]]; then
-        info ""
-        info "  Arkime Viewer:"
-        info "    http://localhost:${ARKIME_PORT:-8005}"
-    fi
-fi
 info "════════════════════════════════════════════════════════════"

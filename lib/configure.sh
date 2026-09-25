@@ -10,11 +10,9 @@ generate_config() {
     echo ""
 
     # ── Network interface ────────────────────────────────────────────────────
-    # Default to lo — this VM is primarily used for offline PCAP analysis.
-    # Team members doing live capture can override with their physical interface.
     local default_iface="lo"
     local physical_iface
-    physical_iface=$(ip -j route show default 2>/dev/null | jq -r '.[0].dev // empty' 2>/dev/null || true)
+    physical_iface=$(ip -4 route show default 2>/dev/null | awk '/default/ {print $5}' | head -1)
 
     echo "  Detected physical interface: ${physical_iface:-none}"
     echo "  Default is 'lo' (offline/PCAP analysis mode)."
@@ -23,8 +21,6 @@ generate_config() {
     IFACE="${IFACE:-$default_iface}"
 
     # ── HOME_NET ─────────────────────────────────────────────────────────────
-    # Default to "any" — this VM analyses PCAPs from arbitrary networks,
-    # so restricting HOME_NET would cause rules to silently miss traffic.
     local default_home_net="any"
 
     echo "  Default HOME_NET is 'any' (matches all traffic in PCAPs)."
@@ -37,9 +33,9 @@ generate_config() {
     read -rp "Evidence/working directory [${default_evidence}]: " EVIDENCE_DIR
     EVIDENCE_DIR="${EVIDENCE_DIR:-$default_evidence}"
 
-    # ── PCAP retention ───────────────────────────────────────────────────────
-    read -rp "Max PCAP storage in GB [50]: " PCAP_MAX_GB
-    PCAP_MAX_GB="${PCAP_MAX_GB:-50}"
+    # ── Storage limitations ──────────────────────────────────────────────────
+    read -rp "Minimum free disk space to preserve for OS (GB) [50]: " MIN_FREE_SPACE_GB
+    MIN_FREE_SPACE_GB="${MIN_FREE_SPACE_GB:-50}"
 
     # ── ES index retention ───────────────────────────────────────────────────
     read -rp "ES index retention in days [30]: " ES_RETENTION_DAYS
@@ -77,7 +73,7 @@ KAPE_DIR="${EVIDENCE_DIR}/kape-output"
 SAMPLES_DIR="${EVIDENCE_DIR}/samples"
 
 # ── Storage limits ───────────────────────────────────────────────────────────
-PCAP_MAX_GB="${PCAP_MAX_GB}"
+MIN_FREE_SPACE_GB="${MIN_FREE_SPACE_GB}"
 ES_RETENTION_DAYS="${ES_RETENTION_DAYS}"
 
 # ── Elasticsearch ────────────────────────────────────────────────────────────
@@ -95,7 +91,6 @@ EOF
 
     info "Configuration written to: ${conf_file}"
 
-    # Create evidence directories
     mkdir -p "${EVIDENCE_DIR}"/{pcap,evtx,yara-hits,kape-output,samples}
     info "Evidence directories created under: ${EVIDENCE_DIR}"
 }

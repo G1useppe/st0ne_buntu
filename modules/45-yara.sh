@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 45-yara.sh — YARA malware/pattern matching
-#
-# Purpose:
-#   Install YARA for file and memory scanning against community and custom
-#   rule sets.
-#
-# What this module does:
-#   - Install YARA from apt
-#   - Install yara-python for scripting
-#   - Download community rulesets:
-#       * Florian Roth's signature-base
-#       * YARA-Forge curated rules
-#   - Set up daily cron for rule updates
-#   - Create evidence directories for samples and scan output
-#
-# Depends on: 00-base
-# Config used: YARA_HITS_DIR, SAMPLES_DIR
-# Idempotent: yes
 # =============================================================================
 
 set -euo pipefail
@@ -46,7 +29,10 @@ if python3 -c "import yara" 2>/dev/null; then
     info "yara-python already installed."
 else
     info "Installing yara-python …"
-    pip3 install yara-python --break-system-packages -q 2>/dev/null || \
+    PIP_BREAK=""
+    pip3 install --help | grep -q -- '--break-system-packages' && PIP_BREAK="--break-system-packages"
+    
+    pip3 install yara-python $PIP_BREAK -q 2>/dev/null || \
         apt_install python3-yara 2>/dev/null || \
         warn "Could not install yara-python. Manual scanning still works."
 fi
@@ -54,7 +40,6 @@ fi
 # ── 3. Download community rulesets ───────────────────────────────────────────
 mkdir -p "$YARA_RULES_DIR"
 
-# signature-base (Florian Roth / Neo23x0)
 if [[ -d "${YARA_RULES_DIR}/signature-base" ]]; then
     info "Updating signature-base rules …"
     git -C "${YARA_RULES_DIR}/signature-base" pull --quiet 2>&1 || \
@@ -69,7 +54,6 @@ fi
 SIG_COUNT=$(find "${YARA_RULES_DIR}/signature-base" -name '*.yar' 2>/dev/null | wc -l)
 info "signature-base rules: ${SIG_COUNT} files"
 
-# YARA-Forge (pre-compiled community rule packs)
 YARAFORGE_DIR="${YARA_RULES_DIR}/yara-forge"
 mkdir -p "$YARAFORGE_DIR"
 
@@ -102,7 +86,6 @@ info "Running smoke test …"
 SMOKE_DIR="/tmp/yara-smoke-test"
 rm -rf "$SMOKE_DIR" && mkdir -p "$SMOKE_DIR"
 
-# Create a test rule and a matching file
 cat > "${SMOKE_DIR}/test.yar" <<'YARA'
 rule smoke_test {
     strings:
@@ -121,9 +104,5 @@ fi
 
 rm -rf "$SMOKE_DIR"
 
-# ── Done ─────────────────────────────────────────────────────────────────────
 log "45-yara completed"
 info "Module 45-yara complete."
-info "Rules:  ${YARA_RULES_DIR}/"
-info "Usage:  yara -r ${YARA_RULES_DIR}/signature-base/yara/crime_emotet.yar ${SAMPLES_DIR}/"
-info "        yara -r ${YARA_RULES_DIR}/yara-forge/*.yar ${SAMPLES_DIR}/"

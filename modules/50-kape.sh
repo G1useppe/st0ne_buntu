@@ -1,32 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 50-kape.sh — KAPE artifact parsers (Linux-side)
-#
-# Purpose:
-#   Set up the Linux-side tooling for working with KAPE triage output.
-#   KAPE itself is a Windows tool (requires manual download from Kroll).
-#   This module installs parsers and utilities for analysing KAPE output
-#   on the Ubuntu workstation.
-#
-# What this module does:
-#   - Install .NET runtime (for EZ Tools that have Linux builds)
-#   - Install useful parsing tools:
-#       * python-registry — Windows registry hive parsing
-#       * libesedb-utils — ESE database parsing (e.g. SRUM, BITS)
-#       * libpff-utils — Outlook PST/OST parsing
-#       * libevtx-utils — Windows EVTX parsing (native, no .NET)
-#       * libscca-utils — Windows prefetch parsing
-#       * csvkit — CSV analysis from the command line
-#   - Create KAPE output directory
-#   - Install regripper for registry analysis
-#
-# NOTE: KAPE itself cannot be auto-downloaded (requires Kroll account).
-# Download manually from https://www.kroll.com/en/services/cyber-risk/
-#   incident-response-litigation-support/kroll-artifact-parser-extractor-kape
-#
-# Depends on: 00-base
-# Config used: KAPE_DIR
-# Idempotent: yes
 # =============================================================================
 
 set -euo pipefail
@@ -37,6 +11,8 @@ source "$CONF_FILE"
 info "Module 50-kape: starting …"
 export DEBIAN_FRONTEND=noninteractive
 
+UBUNTU_VER=$(lsb_release -rs)
+
 # ── 1. Install .NET runtime ─────────────────────────────────────────────────
 if cmd_exists dotnet; then
     info ".NET runtime already installed."
@@ -44,9 +20,8 @@ else
     info "Installing .NET runtime …"
     apt_install dotnet-runtime-8.0 2>/dev/null || \
         apt_install dotnet-runtime-6.0 2>/dev/null || {
-            # Fallback: add Microsoft repo
-            info "Adding Microsoft .NET repository …"
-            curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb \
+            info "Adding Microsoft .NET repository for Ubuntu ${UBUNTU_VER} …"
+            curl -fsSL "https://packages.microsoft.com/config/ubuntu/${UBUNTU_VER}/packages-microsoft-prod.deb" \
                 -o /tmp/packages-microsoft-prod.deb
             dpkg -i /tmp/packages-microsoft-prod.deb 2>/dev/null || true
             rm -f /tmp/packages-microsoft-prod.deb
@@ -66,18 +41,20 @@ fi
 info "Installing forensic parsing tools …"
 apt_install libesedb-utils libevtx-utils csvkit
 
-# These may not be in all Ubuntu repos — install individually
 for pkg in libpff-utils libscca-utils; do
     apt_install "$pkg" 2>/dev/null || info "${pkg} not available in repo — skipping."
 done
 
-# python-registry for Windows registry hive parsing
-if python3 -c "import Registry" 2>/dev/null; then
-    info "python-registry already installed."
+# Check PIP flag for system packages
+PIP_BREAK=""
+pip3 install --help | grep -q -- '--break-system-packages' && PIP_BREAK="--break-system-packages"
+
+if python3 -c "import Registry; import analyzemft; import pyhindsight" 2>/dev/null; then
+    info "python-registry, analyzemft, pyhindsight already installed."
 else
-    info "Installing python-registry …"
-    pip3 install python-registry --break-system-packages -q 2>/dev/null || \
-        warn "python-registry install failed."
+    info "Installing python-registry, analyzemft, pyhindsight …"
+    pip3 install python-registry analyzemft pyhindsight $PIP_BREAK -q 2>/dev/null || \
+        warn "pip3 install failed. Python forensic parsing may be limited."
 fi
 
 # ── 3. Install RegRipper ────────────────────────────────────────────────────
@@ -116,15 +93,5 @@ done
 
 info "Smoke test: ${PASS}/${TOTAL} parsing tools available."
 
-# ── Done ─────────────────────────────────────────────────────────────────────
 log "50-kape completed"
 info "Module 50-kape complete."
-info ""
-info "KAPE output analysis workflow:"
-info "  1. Run KAPE on Windows target → collect to USB/share"
-info "  2. Copy KAPE output to ${KAPE_DIR}/"
-info "  3. Parse artifacts:"
-info "     Registry: rip.pl -r ${KAPE_DIR}/Registry/SYSTEM -p system"
-info "     EVTX:     evtxexport ${KAPE_DIR}/EventLogs/Security.evtx"
-info "     Prefetch: hayabusa csv-timeline -d ${KAPE_DIR}/EventLogs/"
-info "     ESE DB:   esedbexport ${KAPE_DIR}/SRUDB.dat"

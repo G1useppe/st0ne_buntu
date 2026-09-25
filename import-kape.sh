@@ -72,7 +72,7 @@ es_bulk_insert() {
         return
     fi
 
-    info "Ingesting ${source_tool} data into ${ES_INDEX} …"
+    info "Ingesting ${source_tool} data into${ES_INDEX} …"
 
     # Add source_tool and case_id fields, then format for bulk API
     python3 -c "
@@ -96,7 +96,7 @@ for line in open('${jsonl_file}'):
 
     local count
     count=$(wc -l < "$jsonl_file")
-    info "  Ingested ${count} records from ${source_tool}."
+    info "  Ingested ${count} records from${source_tool}."
 }
 
 # ── 1. Scan for artifacts ────────────────────────────────────────────────────
@@ -106,10 +106,7 @@ EVTX_FILES=$(find "$KAPE_INPUT" -iname '*.evtx' 2>/dev/null)
 EVTX_COUNT=$(echo "$EVTX_FILES" | grep -c '.' 2>/dev/null || echo 0)
 [[ $EVTX_COUNT -gt 0 ]] && info "  EVTX files: ${EVTX_COUNT}" && ARTIFACTS_FOUND=$((ARTIFACTS_FOUND + 1))
 
-REG_HIVES=$(find "$KAPE_INPUT" -maxdepth 5 -type f \( \
-    -iname 'SYSTEM' -o -iname 'SOFTWARE' -o -iname 'SAM' -o \
-    -iname 'SECURITY' -o -iname 'NTUSER.DAT' -o -iname 'UsrClass.dat' \
-    \) 2>/dev/null | head -20)
+REG_HIVES=$(find "$KAPE_INPUT" -maxdepth 5 -type f \( \     -iname 'SYSTEM' -o -iname 'SOFTWARE' -o -iname 'SAM' -o \     -iname 'SECURITY' -o -iname 'NTUSER.DAT' -o -iname 'UsrClass.dat' \     \) 2>/dev/null | head -20)
 REG_COUNT=$(echo "$REG_HIVES" | grep -c '.' 2>/dev/null || echo 0)
 [[ $REG_COUNT -gt 0 ]] && info "  Registry hives: ${REG_COUNT}" && ARTIFACTS_FOUND=$((ARTIFACTS_FOUND + 1))
 
@@ -121,7 +118,7 @@ CHROME_PROFILES=$(find "$KAPE_INPUT" -maxdepth 8 -type f -iname 'History' -path 
 CHROME_COUNT=$(echo "$CHROME_PROFILES" | grep -c '.' 2>/dev/null || echo 0)
 [[ $CHROME_COUNT -gt 0 ]] && info "  Chrome profiles: ${CHROME_COUNT}" && ARTIFACTS_FOUND=$((ARTIFACTS_FOUND + 1))
 
-ESE_FILES=$(find "$KAPE_INPUT" -maxdepth 5 -type f \( -iname 'SRUDB.dat' -o -iname 'qmgr*.dat' \) 2>/dev/null)
+ESE_FILES=$(find "$KAPE_INPUT" -maxdepth 5 -type f \(-iname 'SRUDB.dat' -o -iname 'qmgr*.dat'\) 2>/dev/null)
 ESE_COUNT=$(echo "$ESE_FILES" | grep -c '.' 2>/dev/null || echo 0)
 [[ $ESE_COUNT -gt 0 ]] && info "  ESE databases: ${ESE_COUNT}" && ARTIFACTS_FOUND=$((ARTIFACTS_FOUND + 1))
 
@@ -187,7 +184,7 @@ if [[ $REG_COUNT -gt 0 ]]; then
         OUTPUT_FILE="${RESULTS_DIR}/registry/${HIVE_NAME}-report.txt"
 
         if [[ -n "$PROFILE" ]] && command -v rip.pl &>/dev/null; then
-            info "  Parsing: ${HIVE_NAME} (profile: ${PROFILE})"
+            info "  Parsing: ${HIVE_NAME} (profile:${PROFILE})"
             rip.pl -r "$hive" -p "$PROFILE" > "$OUTPUT_FILE" 2>/dev/null || \
                 warn "  RegRipper failed on ${HIVE_NAME}"
         elif command -v rip.pl &>/dev/null; then
@@ -346,16 +343,16 @@ if [[ $PF_COUNT -gt 0 ]]; then
 
     PF_JSONL="${RESULTS_DIR}/timeline/prefetch-timeline.jsonl"
 
-    if command -v scca_export &>/dev/null; then
+    if command -v sccaexport &>/dev/null; then
         while IFS= read -r pf_file; do
             [[ -z "$pf_file" ]] && continue
-            scca_export "$pf_file" 2>/dev/null
+            sccaexport "$pf_file" 2>/dev/null
         done <<< "$PF_FILES" > "${RESULTS_DIR}/prefetch/prefetch-raw.txt"
-        info "  Prefetch: exported with scca_export"
-        ARTIFACTS_PARSED=$((ARTIFACTS_PARSED + 1))
-    else
-        # Fallback: extract basic info with Python
-        python3 -c "
+        info "  Prefetch: exported with sccaexport"
+    fi
+
+    # Always extract basic info with Python to ensure JSONL for ES
+    python3 -c "
 import os, json, struct, datetime
 
 pf_dir = '''${PF_FILES}'''
@@ -383,12 +380,11 @@ for pf_path in pf_dir.strip().split('\n'):
 output.close()
 " 2>/dev/null || warn "Prefetch parsing had issues."
 
-        if [[ -s "$PF_JSONL" ]]; then
-            PF_PARSED=$(wc -l < "$PF_JSONL")
-            info "  Prefetch: ${PF_PARSED} entries (basic metadata)"
-            ARTIFACTS_PARSED=$((ARTIFACTS_PARSED + 1))
-            es_bulk_insert "$PF_JSONL" "prefetch"
-        fi
+    if [[ -s "$PF_JSONL" ]]; then
+        PF_PARSED=$(wc -l < "$PF_JSONL")
+        info "  Prefetch: ${PF_PARSED} entries (basic metadata)"
+        ARTIFACTS_PARSED=$((ARTIFACTS_PARSED + 1))
+        es_bulk_insert "$PF_JSONL" "prefetch"
     fi
 fi
 
@@ -407,12 +403,12 @@ cat > "$SUMMARY" <<EOF
 
 | Type | Count | Status |
 |------|-------|--------|
-| EVTX files | ${EVTX_COUNT} | $([ $EVTX_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
-| Registry hives | ${REG_COUNT} | $([ $REG_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
-| MFT files | ${MFT_COUNT} | $([ $MFT_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
-| Chrome profiles | ${CHROME_COUNT} | $([ $CHROME_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
-| ESE databases | ${ESE_COUNT} | $([ $ESE_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
-| Prefetch files | ${PF_COUNT} | $([ $PF_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| EVTX files | ${EVTX_COUNT} | $([$EVTX_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| Registry hives | ${REG_COUNT} | $([$REG_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| MFT files | ${MFT_COUNT} | $([$MFT_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| Chrome profiles | ${CHROME_COUNT} | $([$CHROME_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| ESE databases | ${ESE_COUNT} | $([$ESE_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
+| Prefetch files | ${PF_COUNT} | $([$PF_COUNT -gt 0 ] && echo "Parsed" || echo "Not found") |
 
 ## Output Locations
 

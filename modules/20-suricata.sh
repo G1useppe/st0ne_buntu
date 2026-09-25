@@ -1,29 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 20-suricata.sh — Suricata IDS + Emerging Threats Open (emerging-all.rules)
-#
-# Purpose:
-#   Install Suricata from the OISF stable PPA, configure it for offline PCAP
-#   analysis, download the full emerging-all.rules ruleset, and set up daily
-#   rule updates.
-#
-# What this module does:
-#   - Add OISF stable PPA
-#   - Install suricata (handle suricata-update package conflict on 22.04)
-#   - Backup and configure suricata.yaml:
-#       * Set HOME_NET and EXTERNAL_NET to "any" (PCAP analysis mode)
-#       * Set af-packet interface to $IFACE
-#       * Enable community-id: true (for Zeek/Elastic correlation)
-#       * Point rule-files at emerging-all.rules
-#   - Download emerging-all.rules directly from ET (full ruleset, all enabled)
-#   - Validate config with suricata -T
-#   - Enable and start suricata.service
-#   - Install daily cron for rule updates
-#   - Offline PCAP smoke test
-#
-# Depends on: 00-base
-# Config used: IFACE, HOME_NET, EXTERNAL_NET
-# Idempotent: yes
 # =============================================================================
 
 set -euo pipefail
@@ -43,7 +20,6 @@ else
     add-apt-repository -y ppa:oisf/suricata-stable
     apt-get update -qq
 
-    # Handle the suricata-update package conflict on 22.04
     if dpkg -l suricata-update 2>/dev/null | grep -q '^ii'; then
         info "Removing standalone suricata-update (bundled in suricata 7+) …"
         dpkg --remove --force-remove-reinstreq suricata-update 2>/dev/null || true
@@ -75,37 +51,33 @@ info "Rules downloaded: ${RULE_COUNT} active alert rules"
 SURICATA_CONF="/etc/suricata/suricata.yaml"
 backup_file "$SURICATA_CONF"
 
-# HOME_NET and EXTERNAL_NET — "any" for offline PCAP analysis
 info "Setting HOME_NET to ${HOME_NET} …"
 sed -i "s|^\(\s*HOME_NET:\s*\)\".*\"|\\1\"${HOME_NET}\"|" "$SURICATA_CONF"
 
 info "Setting EXTERNAL_NET to ${EXTERNAL_NET} …"
 sed -i "s|^\(\s*EXTERNAL_NET:\s*\)\".*\"|\\1\"${EXTERNAL_NET}\"|" "$SURICATA_CONF"
 
-# af-packet interface
 info "Setting af-packet interface to ${IFACE} …"
 sed -i "/^af-packet:/,/^\S/{
     s/^\(\s*- interface:\s*\).*/\1${IFACE}/
 }" "$SURICATA_CONF"
 
-# pcap interface (fallback capture method)
 sed -i "/^pcap:/,/^\S/{
     s/^\(\s*- interface:\s*\).*/\1${IFACE}/
 }" "$SURICATA_CONF"
 
-# Point rule-files at emerging-all.rules
 info "Configuring rule-files to use emerging-all.rules …"
 sed -i '/^rule-files:/,/^\S/{
     /^rule-files:/!{
         /^\s*-/d
     }
 }' "$SURICATA_CONF"
-sed -i '/^rule-files:/a\  - emerging-all.rules' "$SURICATA_CONF"
+if ! grep -q 'emerging-all.rules' "$SURICATA_CONF"; then
+    sed -i '/^rule-files:/a\  - emerging-all.rules' "$SURICATA_CONF"
+fi
 
-# Set default-rule-path
 sed -i "s|^\(default-rule-path:\s*\).*|\1${RULES_DIR}|" "$SURICATA_CONF"
 
-# Enable community-id for cross-tool correlation (Zeek, Elastic)
 info "Enabling community-id …"
 if grep -q '# *community-id:' "$SURICATA_CONF"; then
     sed -i 's/# *community-id:.*/community-id: true/' "$SURICATA_CONF"
@@ -155,7 +127,6 @@ CRON_FILE="/etc/cron.daily/st0ne_buntu-suricata-update"
 info "Creating daily ET rule update cron …"
 cat > "$CRON_FILE" <<EOF
 #!/usr/bin/env bash
-# Download latest emerging-all.rules and reload Suricata
 SURICATA_VER=\$(suricata -V 2>/dev/null | grep -oP 'version \K[\d.]+' || echo "8.0")
 MAJOR_MINOR=\$(echo "\$SURICATA_VER" | cut -d. -f1-2)
 RULES_URL="https://rules.emergingthreats.net/open/suricata-\${MAJOR_MINOR}/emerging-all.rules"
@@ -211,14 +182,12 @@ if [[ -f "$SMOKE_PCAP" ]]; then
         info "Smoke test PASSED — alert detected in offline replay."
     else
         warn "Smoke test: no alert from offline replay."
-        warn "  Check: cat ${SMOKE_DIR}/fast.log"
     fi
 else
-    warn "Could not generate test PCAP (python3 missing?). Skipping smoke test."
+    warn "Could not generate test PCAP. Skipping smoke test."
 fi
 
 rm -rf "$SMOKE_DIR"
 
-# ── Done ─────────────────────────────────────────────────────────────────────
 log "20-suricata completed"
 info "Module 20-suricata complete."
