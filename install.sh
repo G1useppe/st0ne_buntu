@@ -16,6 +16,13 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${REPO_DIR}/lib/common.sh"
 source "${REPO_DIR}/lib/preflight.sh"
 
+# ── Fix permissions ──────────────────────────────────────────────────────────
+if declare -f info > /dev/null; then
+    info "Setting executable permissions on scripts …"
+fi
+chmod +x *.sh modules/*.sh tests/*.sh rules/*.sh 2>/dev/null || true
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Parse arguments ──────────────────────────────────────────────────────────
 ACTION="install"
 TARGET_MODULE=""
