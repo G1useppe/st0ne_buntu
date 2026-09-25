@@ -41,7 +41,7 @@ if ! command -v pkexec &>/dev/null; then
 fi
 
 # 4. Execution & Progress Tracking
-pkexec bash -c "./rehearse-live.sh -x ${SPEED} \"${PCAP_FILE}\"" | \
+pkexec bash -c "\"${SCRIPT_DIR}/rehearse-live.sh\" -x ${SPEED} \"${PCAP_FILE}\"" | \
     zenity --progress \
     --title="Live Rehearsal: $(basename "$PCAP_FILE")" \
     --text="Spinning up sensors and injecting traffic...\n\nClick Cancel to instantly abort and tear down the range." \
