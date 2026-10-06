@@ -21,7 +21,14 @@ PCAP_FILE=$(zenity --file-selection \
 
 [[ -z "$PCAP_FILE" ]] && exit 0
 
-# 2. Replay Mode Selector
+# 2. Optional: Burn Existing Data
+if zenity --question --title="Data Reset" --text="Would you like to run burn-range.sh to wipe all existing SIEM logs and PCAPs before injecting?" --width=380; then
+    pkexec bash -c "\"${SCRIPT_DIR}/burn-range.sh\"" | \
+        zenity --progress --title="Burning Range" --text="Wiping Elasticsearch indices and disk logs..." \
+        --pulsate --auto-close --auto-kill --width=400
+fi
+
+# 3. Replay Mode Selector
 MODE=$(zenity --list \
     --title="Rehearsal Pace" \
     --text="How do you want to pace the traffic injection?" \
@@ -32,7 +39,7 @@ MODE=$(zenity --list \
 
 [[ -z "$MODE" ]] && exit 0
 
-# 3. Dynamic Value Input
+# 4. Dynamic Value Input
 if [[ "$MODE" == *"Time"* ]]; then
     DURATION=$(zenity --entry \
         --title="Time Stretch" \
@@ -41,7 +48,6 @@ if [[ "$MODE" == *"Time"* ]]; then
     [[ -z "$DURATION" ]] && exit 0
     SPEED_FLAG="-t ${DURATION}"
 else
-    # Upgraded to allow manual float input for slow-mo
     SPEED=$(zenity --entry \
         --title="Speed Multiplier" \
         --text="Enter traffic multiplier (e.g., 1 for real-time, 0.01 for slow-mo):" \
@@ -50,24 +56,35 @@ else
     SPEED_FLAG="-x ${SPEED}"
 fi
 
-# 4. Graphical Sudo Check
+# 5. Dynamic Countdown Timer
+COUNTDOWN=$(zenity --scale \
+    --title="Preparation Timer" \
+    --text="Seconds to wait before firing traffic (gives you time to arrange windows):" \
+    --value=10 --min-value=0 --max-value=60 --step=1)
+
+[[ $? -ne 0 ]] && exit 0
+
+# 6. Kibana URL Copy-Paste Dialog
+KIBANA_URL="http://localhost:5601/app/discover#/?_g=(time:(from:now-15m,to:now))&_a=(query:(language:kuery,query:%27event.dataset:%22zeek.connection%22%27))"
+
+zenity --entry \
+    --title="Action Required: Open Kibana" \
+    --text="Copy this URL and paste it into Firefox.\n\nOnce your browser is ready, click OK to begin the final countdown." \
+    --entry-text="$KIBANA_URL" \
+    --width=600
+
+[[ $? -ne 0 ]] && exit 0
+
+# 7. Graphical Sudo Check
 if ! command -v pkexec &>/dev/null; then
     zenity --error --text="pkexec not found. Cannot prompt for admin rights."
     exit 1
 fi
 
-# 5. Auto-Launch Kibana Dashboard
-# This pre-builds the URL to search for Zeek connections over the last 15 minutes
-KIBANA_URL="http://localhost:5601/app/discover#/?_g=(time:(from:now-15m,to:now))&_a=(query:(language:kuery,query:'event.dataset:%22zeek.connection%22'))"
-if command -v xdg-open &>/dev/null; then
-    xdg-open "$KIBANA_URL" &
-fi
-
-# 6. Execution & Progress Tracking
-# We echo lines starting with '#' to dynamically update the Zenity progress text
+# 8. Execution & Progress Tracking
 pkexec bash -c "
-    for i in {10..1}; do 
-        echo \"# Kibana opened. Injection begins in \$i seconds... Switch to your browser!\"; 
+    for (( i=${COUNTDOWN}; i>0; i-- )); do 
+        echo \"# Injection begins in \$i seconds...\"; 
         sleep 1; 
     done; 
     echo \"# Spinning up sensors and injecting traffic...\";
@@ -78,7 +95,7 @@ pkexec bash -c "
     --text="Authenticating..." \
     --pulsate --auto-close --auto-kill --width=500
 
-# 7. Completion Status
+# 9. Completion Status
 if [[ $? -eq 0 ]]; then
     zenity --info --title="Rehearsal Complete" --text="Traffic injection finished smoothly." --width=300
 else
