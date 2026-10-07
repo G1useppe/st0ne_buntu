@@ -21,17 +21,23 @@ else
     REPO_LIST="/etc/apt/sources.list.d/security:zeek.list"
     KEYRING="/etc/apt/trusted.gpg.d/security_zeek.gpg"
 
-    if [[ ! -f "$REPO_LIST" ]]; then
-        info "Adding Zeek OBS repository for Ubuntu ${UBUNTU_VER} …"
-        echo "deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_${UBUNTU_VER}/ /" \
-            | tee "$REPO_LIST" > /dev/null
-        curl -fsSL "https://download.opensuse.org/repositories/security:zeek/xUbuntu_${UBUNTU_VER}/Release.key" \
-            | gpg --dearmor -o "$KEYRING"
-        apt-get update -qq
-    fi
+    info "Adding Zeek OBS repository for Ubuntu ${UBUNTU_VER} …"
+    
+    # Download the GPG key directly (with -f to fail on 404) and dearmor it
+    curl -fsSL "https://download.opensuse.org/repositories/security:zeek/xUbuntu_${UBUNTU_VER}/Release.key" \
+        | gpg --dearmor | tee "$KEYRING" > /dev/null
+
+    # Inject the repository list
+    echo "deb [signed-by=${KEYRING}] http://download.opensuse.org/repositories/security:/zeek/xUbuntu_${UBUNTU_VER}/ /" \
+        | tee "$REPO_LIST" > /dev/null
+
+    # Update apt to recognize the new repo
+    apt-get update -qq
 
     info "Installing Zeek 7.0 LTS …"
-    apt-get install -y -qq zeek-7.0
+    # Zeek recently dropped the version number from the metapackage.
+    # The 'zeek' package automatically pulls the LTS branch we mapped in the repo URL.
+    apt-get install -y -qq zeek
 fi
 
 ZEEK_VER=$("${ZEEK_PREFIX}/bin/zeek" --version 2>/dev/null | head -1 || echo "unknown")
