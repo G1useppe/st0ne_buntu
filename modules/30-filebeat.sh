@@ -50,7 +50,7 @@ EOF
 # ── 3. Initialize Pipelines & Dashboards ─────────────────────────────────────
 info "Loading Elasticsearch Ingest Pipelines..."
 # The -M flag guarantees the setup command cannot fail due to disabled filesets
-filebeat setup --pipelines --modules suricata,zeek -M "suricata.eve.enabled=true"
+filebeat setup --pipelines --modules suricata,zeek -M "suricata.eve.enabled=true" -M "zeek.connection.enabled=true" -M "zeek.dns.enabled=true" -M "zeek.http.enabled=true"
 
 # ── 4. Service Management ────────────────────────────────────────────────────
 info "Enabling Filebeat to start on boot..."
