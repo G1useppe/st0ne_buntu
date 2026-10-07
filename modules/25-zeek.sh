@@ -37,7 +37,7 @@ else
     info "Installing Zeek 7.0 LTS …"
     # Zeek recently dropped the version number from the metapackage.
     # The 'zeek' package automatically pulls the LTS branch we mapped in the repo URL.
-    apt-get install -y -qq zeek
+    apt-get -y -qq -o Dpkg::Options::="--force-confmiss" -o Dpkg::Options::="--force-confnew" install zeek
 fi
 
 ZEEK_VER=$("${ZEEK_PREFIX}/bin/zeek" --version 2>/dev/null | head -1 || echo "unknown")
