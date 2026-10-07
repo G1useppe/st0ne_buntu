@@ -10,6 +10,7 @@
 #   - Add Elastic GPG key and apt repository
 #   - Install pinned ES version from versions.conf
 #   - Configure single-node discovery (discovery.type: single-node)
+#   - Relax disk watermarks to prevent shard locks on VM hard drives
 #   - Set heap size based on available RAM (via recommended_es_heap)
 #   - Optionally disable security/TLS for lab use (ES_DISABLE_SECURITY)
 #   - Set up ILM (Index Lifecycle Management) retention policy
@@ -110,6 +111,16 @@ EOF
 else
     info "ES security left at defaults (enabled)."
 fi
+
+# ── 3.5 VM Disk Watermarks ────────────────────────────────────────────────────
+info "Relaxing Elasticsearch disk watermarks for VM environment..."
+cat >> "$ES_CONF" <<EOF
+
+# VM Disk Watermarks — prevents 'no shard available' locks on small drives
+cluster.routing.allocation.disk.watermark.low: 90%
+cluster.routing.allocation.disk.watermark.high: 95%
+cluster.routing.allocation.disk.watermark.flood_stage: 97%
+EOF
 
 # ── 4. Set JVM heap size ─────────────────────────────────────────────────────
 ES_HEAP=$(recommended_es_heap)

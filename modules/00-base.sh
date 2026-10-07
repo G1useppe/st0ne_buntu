@@ -51,7 +51,11 @@ apt_install \
     lsb-release \
     ethtool \
     tcpdump \
-    geany
+    geany \
+    zenity \
+    dbus-x11 \
+    tshark \
+    tcpreplay
 
 # ── 3. Timezone → UTC ────────────────────────────────────────────────────────
 # UTC keeps all timestamps consistent across evidence sources

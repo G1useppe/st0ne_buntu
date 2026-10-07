@@ -85,6 +85,10 @@ elif grep -q 'community-id:' "$SURICATA_CONF"; then
     sed -i 's/community-id:.*/community-id: true/' "$SURICATA_CONF"
 fi
 
+# ── 3.5 Ignore Checksums (Required for PCAP Replay) ──────────────────────────
+info "Disabling Suricata checksum validation for PCAP replay..."
+sed -i 's/checksum-validation: yes/checksum-validation: no/g' "$SURICATA_CONF"
+
 # ── 4. Apply local overrides from config/ ────────────────────────────────────
 SURICATA_CONFIG_DIR="${REPO_DIR}/config/suricata"
 
