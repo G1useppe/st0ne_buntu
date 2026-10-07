@@ -41,7 +41,12 @@ cleanup() {
     echo ""
     info "Tearing down rehearsal environment …"
     systemctl stop suricata arkimecapture 2>/dev/null || true
-    /opt/zeek/bin/zeekctl stop 2>/dev/null || true
+    
+    # Zeek requires zeekctl, not systemd
+    if [[ -x "/opt/zeek/bin/zeekctl" ]]; then
+        /opt/zeek/bin/zeekctl stop
+    fi
+    
     rm -rf "$NORM_DIR"
     info "Rehearsal complete. Services stopped."
     exit 0
@@ -69,7 +74,8 @@ if command -v suricata &>/dev/null; then
 fi
 
 if [[ -x "/opt/zeek/bin/zeekctl" ]]; then
-    /opt/zeek/bin/zeekctl start >/dev/null 2>&1
+    # Removed >/dev/null so if Zeek fails to deploy, you actually see the error
+    /opt/zeek/bin/zeekctl deploy 
 fi
 
 if [[ -x "/opt/arkime/bin/capture" ]]; then
