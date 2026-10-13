@@ -28,14 +28,21 @@ elif command -v lsb_release &>/dev/null; then
     UBUNTU_VER=$(lsb_release -rs | tr -d '.')
 fi
 
-ARKIME_DEB="arkime_${ARKIME_VERSION}-1.ubuntu${UBUNTU_VER}_amd64.deb"
+# Detect CPU architecture (amd64 or arm64)
+ARCH=$(dpkg --print-architecture 2>/dev/null || echo "amd64")
+if [[ "$ARCH" != "amd64" && "$ARCH" != "arm64" ]]; then
+    error "Unsupported CPU architecture for Arkime: ${ARCH} (must be amd64 or arm64)."
+fi
+
+ARKIME_DEB="arkime_${ARKIME_VERSION}-1.ubuntu${UBUNTU_VER}_${ARCH}.deb"
 ARKIME_URL="https://github.com/arkime/arkime/releases/download/v${ARKIME_VERSION}/${ARKIME_DEB}"
 
 # ── 1. Download and install Arkime ───────────────────────────────────────────
 if [[ -x "${ARKIME_PREFIX}/bin/capture" ]]; then
     info "Arkime already installed."
 else
-    # Clear any stale/interrupted dpkg or apt states first
+    # Clear any broken/mismatched architecture package states (e.g., amd64 on arm64)
+    dpkg --remove --force-remove-reinstreq arkime:amd64 arkime:arm64 arkime >/dev/null 2>&1 || true
     dpkg --configure -a >/dev/null 2>&1 || true
     apt-get --fix-broken install -y -qq >/dev/null 2>&1 || true
 
@@ -53,7 +60,7 @@ else
     download_if_missing "$ARKIME_URL" "$DEB_PATH"
     chmod 644 "$DEB_PATH"
 
-    info "Installing Arkime ${ARKIME_VERSION} (ubuntu${UBUNTU_VER}) …"
+    info "Installing Arkime ${ARKIME_VERSION} (ubuntu${UBUNTU_VER} / ${ARCH}) …"
     apt-get install -f -y "$DEB_PATH"
     rm -f "$DEB_PATH"
 fi
