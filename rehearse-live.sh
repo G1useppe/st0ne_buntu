@@ -16,15 +16,15 @@ CONF_FILE="${SCRIPT_DIR}/st0ne_buntu.conf"
 [[ -f "$CONF_FILE" ]] && source "$CONF_FILE"
 
 IFACE="${IFACE:-dummy0}"
-REPLAY_SPEED="-M 10" # Default to 10 Mbps
+REPLAY_SPEED="--mbps=10" # Default to 10 Mbps
 START_EPOCH=""
 TARGET_PCAP=""
 
 # ── Parse Arguments ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -m|--mbps) REPLAY_SPEED="-M $2"; shift 2 ;;
-        -x|--multiplier) REPLAY_SPEED="-x $2"; shift 2 ;;
+        -m|--mbps) REPLAY_SPEED="--mbps=$2"; shift 2 ;;
+        -x|--multiplier) REPLAY_SPEED="--multiplier=$2"; shift 2 ;;
         -e|--epoch) START_EPOCH="$2"; shift 2 ;;
         -h|--help)
             echo "Usage: $0 [-m mbps | -x multiplier] [-e start_epoch] <pcap_file>"
@@ -49,7 +49,7 @@ cleanup() {
         /opt/zeek/bin/zeekctl stop
     fi
     
-    rm -rf "${NORM_DIR:-}" "${TARGET_PCAP}" 2>/dev/null || true
+    rm -rf "${NORM_DIR:-}" /tmp/*-forged.pcap 2>/dev/null || true
     info "Rehearsal complete. Services stopped."
     exit 0
 }
@@ -104,7 +104,10 @@ fi
 # ── 4. Execute Replay ────────────────────────────────────────────────────────
 echo "# Injecting traffic (${REPLAY_SPEED}) into ${IFACE}..."
 banner "Firing traffic … (Press Ctrl+C to abort)"
-tcpreplay -i "$IFACE" $REPLAY_SPEED "$NORM_PCAP"
+
+# Force C locale to prevent decimal truncation, but rely on the default gtod timer 
+# so tcpreplay does not overflow on sub-1.0 multipliers.
+LC_ALL=C tcpreplay -i "$IFACE" $REPLAY_SPEED "$NORM_PCAP"
 
 echo "# Traffic complete. Flushing Filebeat logs..."
 info "Traffic complete. Waiting 5 seconds for Filebeat to flush logs …"
